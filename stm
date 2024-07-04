@@ -43,7 +43,7 @@ load balancer
 
     upstream backend {
        server 192.168.206.133;
-       server 192.168.206.131;
+       server 192.168.206.131;:wq
     }
 
     server {
@@ -113,4 +113,171 @@ systemctl start httpd
 
 
 ================================================================================================================================================
+
+
+**** SQUID COMMAND CHEATSHEET ****
+
+>>> FILE WHERE WE ADD THIS RULE >> /etc/squid/squid.conf
+
+squid -v 					// To check squid version
+squid -k parse  			// To test the syntax of squid.conf
+curl -x 192.168.10.1:3128 http://test.php.vulnweb.com -I    	//{x: to use proxy , -I: for header}
+
+
+# Run these both command after every change in squid.conf
+squid -k check 				// To check if squid proxy is OK
+squid -k reconfigure 		// reload squid config file w/out restarting service
+
+
+acl internet_allow src 192.168.10.1/24 					-- to allow a specific IP 					
+	http_access allow internet_allow
+
+
+acl internet_allow src 192.168.10.0/24 					-- to allow a network
+	http_access allow internet_allow	 
+
+
+acl banned1 src 172.18.100-109 				
+http_access deny banned1 						-- denied access
+http_reply_access allow all	          			-- you are allowing reply from proxy	
+
+
+forwarded_for delete 							// delete the entire "X-Forwarded-for" header
+forwarded_for on 								// append your client's IP address
+forwarded_for off 								// hides your client's IP address
+forwarded_for transparent 						// squid will not alter the "X-Forwarded-for" header
+
+
+# Allow specific header for squid to modify client's request
+request_header_access User-Agent allow all    --- {User-Agent:header, all: means to everyone}
+
+
+visible_hostname anything 						// To change/hide hostname in header
+
+
+# 6400MB cache with 16 level-1 sub-directories + 256 sub-directories in each level-1 directory
+cache_dir ufs /var/spool/squid 6400 16 256
+
+
+cache_mem 200 MB
+
+
+maximum_object_size 500 MB 						
+maximum_object_size_in_memory 4 MB
+
+
+strip_query_terms off
+
+
+# Rule to specify which content material you need to store in cache
+acl jpg_rule url_regex -i .*\.(jpg|css)
+cache allow jpg_rule
+
+
+
+refresh_pattern -i \.jpg 30 20% 4320 	  			// {-i | -min | -max}
+
+
+
+acl blocklist1 dstdomain .facebook.com youtube.com   			// to block mentioned domain
+http_access deny blocklist1
+OR
+acl banned_reddit url_regex ^http://.*reddit.com/.*$
+http_access deny banned_reddit
+
+
+acl blocksites dctdomain "/etc/squid/blockedsites.squid" 		// to pass list of domain to block 
+http_access deny blocksites
+OR
+acl blocksites url_regex "/etc/squid/blockedsites.squid"
+http_access deny blocksites
+
+
+
+acl block_port port 80 								// to block port 80
+http_access deny block_port
+
+acl safe_port port 80 21 563 70 1025-65535 			// to allow these ports using ! opertator
+http_access deny !safe_port
+
+acl bad_keywords url_regex "/etc/squid/ban_keyword.txt" 	// to pass list to block specific word
+http_access deny bad_keywords
+
+acl blockfile urlpath_regex "/etc/squid/blockfiles.squid" 	// to pass list to block file types
+http_access deny blockfile
+
+
+acl working_hours time 10:00-17:00 					// To set working hours
+http_access deny working_hours
+
+
+======================================================================================================================================
+reverse-proxy
+
+      ubuntu machine
+    -     su - s                .. go into the root
+    -     /etc/nginx
+    -     cd enabled
+    -     cd sites-enabled/
+    -     ls -l 
+    -     unlink /etc/nginx/sites-enabled/default
+
+
+        now make the default document root
+    -    mkdir -p  /var/www/marvels/html
+    -    mkdir -p  /var/www/thanos/html
+
+          make webpage
+    -    cat > /var/www/marvels/html/index.html
+                  <h1>marvels</h1>
+    
+   -    cat > /var/www/thanos/html/index.html
+                   <h1>thanos</h1>
+
+    
+   -    cd /etc/nginx/sites-available/
+           
+          make web server do configuration now
+    -     vim marvels.conf
+                    server {
+                             listen 80 default_server;
+                             listen [::]:80 default_server;
+                             root /var/www/marvels/html;
+                             index index.html index.htm index.nginx-debian.html;
+                             server_name marvels.com www.marvels.com;
+                      
+                             location / {
+                                   try_files $uri $uri/ = 404;
+                             }
+                      }
+     -     vim thanos.conf
+                    server
+                                {
+                                	listen 80;
+                                	listen [::]:80;
+                                	root /var/www/thanos/html;
+                                	index index.html index.htm index.nginx_debian.html;
+                                	server_name thanos.com www.thanos.com;
+                                	location / {
+                                			try_files $uri $uri/ =404;
+                                		}
+                                }
+
+      -   now link
+            ln -s /etc/nginx/sites-available/marvels.conf /etc/nginx/sites-enabled/marvels.conf
+            ln -s /etc/nginx/sites-available/thanos.conf /etc/nginx/sites-enabled/thanos.conf          
+
+      -     nginx -t               ......   to check the configurtion is correct or not (validate)
+      -     systemctl restart nginx
+
+      -     now configuration force dns
+               cd /etc/hosts
+                      192.168.144.131 marvels.com
+                      192.168.144.131 thanos.com
+
+     -    now got browser
+                marvels.com
+                thanos.com
+
+              192.168.144.131:marvels.com
 
